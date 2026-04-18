@@ -1,0 +1,6 @@
+name: blackbox_optimization
+dir: problems/blackbox_optimization
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 120.0

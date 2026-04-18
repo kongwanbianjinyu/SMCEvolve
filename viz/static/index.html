@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SMCEvolve viz</title>
+  <link rel="stylesheet" href="viz.css">
+</head>
+<body>
+  <div id="layout">
+    <aside id="sidebar">
+      <h1>SMCEvolve</h1>
+      <h2>Runs</h2>
+      <ul id="runs"></ul>
+      <div id="legend">
+        <h2>Legend</h2>
+        <p>Each iteration shows three rows:</p>
+        <ol>
+          <li><b>reweight</b> &mdash; parents (size&nbsp;∝&nbsp;weight)</li>
+          <li><b>resample</b> &mdash; arrows show ancestor</li>
+          <li><b>mutate</b> &mdash; best-of-K proposals</li>
+        </ol>
+        <div class="cmap">
+          <span>low</span>
+          <div class="bar"></div>
+          <span>high</span>
+        </div>
+        <h2 style="margin-top:14px">Kernel</h2>
+        <p>Proposal circle stroke encodes the sampled kernel:</p>
+        <ul class="kernel-legend">
+          <li><span class="kdot" style="border-color:#2563eb"></span>diff (SEARCH/REPLACE)</li>
+          <li><span class="kdot" style="border-color:#e67e22"></span>rewrite (full program)</li>
+          <li><span class="kdot kdot-thick" style="border-color:#6b7280"></span>thick ring = with inspiration</li>
+        </ul>
+      </div>
+    </aside>
+    <main id="main">
+      <header id="run-header"></header>
+      <nav id="tabs">
+        <button class="tab active" data-tab="flow">Flow</button>
+        <button class="tab" data-tab="curve">Score curve</button>
+        <button class="tab" data-tab="cost">Token &amp; Cost</button>
+        <button class="tab" data-tab="kernel">Kernel</button>
+      </nav>
+      <div id="view-flow" class="view">
+        <div id="islands"></div>
+      </div>
+      <div id="view-curve" class="view hidden">
+        <div id="curve-chart"></div>
+      </div>
+      <div id="view-cost" class="view hidden">
+        <div id="cost-chart"></div>
+      </div>
+      <div id="view-kernel" class="view hidden">
+        <div id="kernel-chart"></div>
+      </div>
+    </main>
+    <section id="detail" class="hidden">
+      <button id="detail-close">×</button>
+      <h2 id="detail-title"></h2>
+      <div id="detail-info"></div>
+      <h3>prompt</h3>
+      <pre id="detail-prompt"></pre>
+      <h3>response</h3>
+      <pre id="detail-response"></pre>
+      <h3>program</h3>
+      <pre id="detail-program"></pre>
+    </section>
+  </div>
+  <div id="tooltip" class="hidden"></div>
+  <script src="viz.js"></script>
+</body>
+</html>

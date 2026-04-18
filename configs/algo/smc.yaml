@@ -1,0 +1,35 @@
+n_islands: 2
+particles_per_island: 8
+beta: 20            # target inverse temperature (Sec 1)
+kappa: 0.9           # ESS threshold for bisection (Sec 2.3)
+n_proposals: 2       # K proposals per particle per SMC step (best-of-K)
+min_iterations: 3    # floor on SMC steps per island; caps Δλ ≤ 1/min_iterations
+migration_interval: 3
+migration_size: 1
+max_iterations: 30   # global upper bound on epochs (formerly max_epochs)
+
+# Prompt management — 2x2 kernel grid over {diff, rewrite} x {no_inspo, with_inspo}.
+# Each proposal samples a kernel. Kernels with weight <= 0 are disabled.
+# "Inspirations" are the top-k highest-reward particles on the same island,
+# excluding the parent being mutated.
+prompt:
+  # "weighted" = static sampling by kernel_weights (below).
+  # "adaptive" = Thompson Sampling — tracks per-kernel improvement rate
+  #              and automatically favours kernels that produce improvements.
+  kernel_selection: adaptive
+
+  # Kernel weights: used directly in "weighted" mode; in "adaptive" mode
+  # they only control which kernels are enabled (weight > 0).
+  kernel_weights:
+    diff_no_inspo: 1.0
+    diff_with_inspo: 1.0
+    rewrite_no_inspo: 1.0
+    rewrite_with_inspo: 1.0
+  top_k_inspiration: 2       # how many "other top particles" to show
+  diverse_inspirations: 2    # how many diversity-selected inspirations (MAP-Elites style)
+  language: python
+  #force_kernel: diff_with_inspo   # uncomment to pin a single kernel
+
+  # Embedding model for diversity selection (only used when diverse_inspirations > 0)
+  embedding_model: "Titan Text Embeddings V2"
+  embedding_base_url: "https://litellm.cloud.osu.edu"

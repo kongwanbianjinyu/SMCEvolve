@@ -1,0 +1,13 @@
+defaults:
+  - algo: smc
+  - llm: openai
+  - problem: target_value
+  - _self_
+
+seed: 42
+
+hydra:
+  run:
+    dir: outputs/${problem.name}/${now:%Y-%m-%d_%H-%M-%S}
+  job:
+    chdir: false

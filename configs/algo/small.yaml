@@ -1,0 +1,8 @@
+defaults:
+  - smc
+  - _self_
+
+n_islands: 1
+particles_per_island: 4
+n_proposals: 1
+max_iterations: 6

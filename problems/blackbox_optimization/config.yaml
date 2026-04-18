@@ -1,0 +1,32 @@
+random_seed: 0
+
+problems:
+  stage2:
+    - name: sphere_d3_i1
+      function_id: 1
+      dimension: 3
+      instance_id: 1
+      budget: 500
+    - name: rosenbrock_d5_i2
+      function_id: 8
+      dimension: 5
+      instance_id: 2
+      budget: 800
+    - name: rastrigin_d10_i5
+      function_id: 15
+      dimension: 10
+      instance_id: 5
+      budget: 1600
+    - name: ellipsoid_d20_i1
+      function_id: 2
+      dimension: 20
+      instance_id: 1
+      budget: 2500
+    - name: schaffers_d40_i5
+      function_id: 17
+      dimension: 40
+      instance_id: 5
+      budget: 4000
+
+evaluator:
+  timeout: 120

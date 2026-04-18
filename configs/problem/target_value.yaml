@@ -1,0 +1,6 @@
+name: target_value
+dir: problems/target_value
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 5.0

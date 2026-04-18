@@ -1,0 +1,6 @@
+name: circle_packing
+dir: problems/circle_packing
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 15.0
