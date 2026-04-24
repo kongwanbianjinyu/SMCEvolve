@@ -1,0 +1,6 @@
+name: symreg_chem_react_CRK8
+dir: problems/symbolic_regression/generated/chem_react/CRK8
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

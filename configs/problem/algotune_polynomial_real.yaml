@@ -1,0 +1,6 @@
+name: algotune_polynomial_real
+dir: problems/algotune/polynomial_real
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

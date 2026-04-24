@@ -1,0 +1,46 @@
+'# Configuration for Symbolic Regression Task': phys_osc/PO40
+max_iterations: 200
+log_level: INFO
+target_score: combined_score
+checkpoint_interval: 10
+llm:
+  primary_model: gpt-4o
+  primary_model_weight: 0.8
+  secondary_model: o3
+  secondary_model_weight: 0.2
+  api_base: https://api.openai.com/v1
+prompt:
+  system_message: 'Your task is to evolve a Python function `func(x, params)` that
+    models a scientific process, considering the physical meaning and relationships
+    of inputs, by predicting output variables based on input variables.\n\nThe function
+    signature is:\n\n```python\ndef func(x: np.ndarray, params: np.ndarray) -> np.ndarray:\n```\n\n-
+    `x` is a 2D NumPy array of shape `(n_samples, 3)`\n- `params` is a 1D NumPy array
+    of up to 10 parameters\n- The function should return a 1D NumPy array of predictions
+    with shape `(n_samples,)`\n\n**Current Problem:**\nModel the dv_dt (Acceleration
+    in Nonl-linear Harmonic Oscillator) using the input features: x (Position at time
+    t), t (Time), v (Velocity at time t)\nThus, `x` contains 3 columns: x (Position
+    at time t), t (Time), v (Velocity at time t).\n\nThe initial version of `func`
+    is a simple linear model. Parameters in `params` will be optimized externally
+    using the BFGS algorithm based on unseen training data.\n\nYour objective is to
+    evolve `func` to improve predictive performance on unseen data. Aim for a balance
+    between:\n- **Accuracy**: Lower mean squared error (MSE) on training data\n- **Simplicity**:
+    Prefer concise, interpretable expressions\n\nModel performance (score = -log_10(mse))
+    will be evaluated on a held-out dataset. Ensure the model is free of potential
+    numerical errors (e.g., log0, division by 0).'
+  num_top_programs: 4
+  use_template_stochasticity: true
+database:
+  population_size: 70
+  archive_size: 30
+  num_islands: 4
+  elite_selection_ratio: 0.3
+  exploitation_ratio: 0.6
+evaluator:
+  timeout: 90
+  cascade_evaluation: false
+  cascade_thresholds:
+  - 1.0
+  parallel_evaluations: 4
+  use_llm_feedback: false
+diff_based_evolution: true
+allow_full_rewrites: false

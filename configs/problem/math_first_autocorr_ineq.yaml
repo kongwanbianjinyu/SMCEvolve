@@ -1,0 +1,6 @@
+name: math_first_autocorr_ineq
+dir: problems/math/first_autocorr_ineq
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 60.0

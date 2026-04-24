@@ -1,0 +1,8 @@
+name: autoresearch
+dir: problems/autoresearch
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+# Wall-clock budget for a single candidate. Must exceed AR_TIME_BUDGET
+# (training cap) plus ~60 s of startup + final eval overhead.
+timeout: 300.0

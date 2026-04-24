@@ -19,6 +19,9 @@ venv/
 # Run artifacts
 outputs/
 multirun/
+problems/**/logs/
+problems/**/smoke_*.json
+problems/**/smoke_*.log
 
 # Editors / OS
 .vscode/

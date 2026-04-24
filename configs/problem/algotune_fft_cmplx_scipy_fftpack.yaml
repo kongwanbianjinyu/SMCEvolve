@@ -1,0 +1,6 @@
+name: algotune_fft_cmplx_scipy_fftpack
+dir: problems/algotune/fft_cmplx_scipy_fftpack
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

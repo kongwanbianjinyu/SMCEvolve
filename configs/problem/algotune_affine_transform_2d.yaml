@@ -1,0 +1,6 @@
+name: algotune_affine_transform_2d
+dir: problems/algotune/affine_transform_2d
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

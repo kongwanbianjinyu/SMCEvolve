@@ -1,0 +1,6 @@
+name: algotune_fft_convolution
+dir: problems/algotune/fft_convolution
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

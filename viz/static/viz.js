@@ -16,14 +16,7 @@ async function main() {
     list.innerHTML = "<li style='color:#8b95a3'>(no runs yet)</li>";
     return;
   }
-  for (const r of runs) {
-    const li = document.createElement("li");
-    li.textContent = r.id;
-    li.title = `${r.id}\n${(r.size_bytes / 1024).toFixed(1)} KB`;
-    li.dataset.runId = r.id;
-    li.addEventListener("click", () => loadRun(r.id));
-    list.appendChild(li);
-  }
+  renderRunTree(runs, list);
   loadRun(runs[0].id);
 
   document.getElementById("detail-close").addEventListener("click", hideDetail);
@@ -40,9 +33,101 @@ async function main() {
   });
 }
 
+const FOLDER_OPEN_KEY = "smcevolve.viz.openFolders";
+
+function loadOpenFolders() {
+  try {
+    const raw = localStorage.getItem(FOLDER_OPEN_KEY);
+    return new Set(raw ? JSON.parse(raw) : []);
+  } catch {
+    return new Set();
+  }
+}
+
+function saveOpenFolders(set) {
+  try {
+    localStorage.setItem(FOLDER_OPEN_KEY, JSON.stringify([...set]));
+  } catch {}
+}
+
+function buildRunTree(runs) {
+  // Each node: { name, path, children: Map<string, node>, runs: [run] }
+  const root = { name: "", path: "", children: new Map(), runs: [] };
+  for (const r of runs) {
+    const parts = r.id.split("/");
+    const leafName = parts.pop();
+    let node = root;
+    let pathSoFar = "";
+    for (const p of parts) {
+      pathSoFar = pathSoFar ? pathSoFar + "/" + p : p;
+      if (!node.children.has(p)) {
+        node.children.set(p, { name: p, path: pathSoFar, children: new Map(), runs: [] });
+      }
+      node = node.children.get(p);
+    }
+    node.runs.push({ ...r, leafName });
+  }
+  return root;
+}
+
+function renderRunTree(runs, container) {
+  const root = buildRunTree(runs);
+  const openFolders = loadOpenFolders();
+
+  function makeRunLi(run) {
+    const li = document.createElement("li");
+    li.className = "run";
+    li.textContent = run.leafName;
+    li.title = `${run.id}\n${(run.size_bytes / 1024).toFixed(1)} KB`;
+    li.dataset.runId = run.id;
+    li.addEventListener("click", () => loadRun(run.id));
+    return li;
+  }
+
+  function renderNode(node, parentUl) {
+    // Folders first (sorted by name), then runs (newest first by mtime).
+    const folders = [...node.children.values()].sort((a, b) => a.name.localeCompare(b.name));
+    for (const child of folders) {
+      const li = document.createElement("li");
+      li.className = "folder";
+      const details = document.createElement("details");
+      if (openFolders.has(child.path)) details.open = true;
+      details.addEventListener("toggle", () => {
+        const set = loadOpenFolders();
+        if (details.open) set.add(child.path);
+        else set.delete(child.path);
+        saveOpenFolders(set);
+      });
+      const summary = document.createElement("summary");
+      summary.textContent = child.name;
+      details.appendChild(summary);
+      const ul = document.createElement("ul");
+      details.appendChild(ul);
+      li.appendChild(details);
+      parentUl.appendChild(li);
+      renderNode(child, ul);
+    }
+    const sortedRuns = [...node.runs].sort((a, b) => b.mtime - a.mtime);
+    for (const run of sortedRuns) {
+      parentUl.appendChild(makeRunLi(run));
+    }
+  }
+
+  renderNode(root, container);
+}
+
 async function loadRun(runId) {
-  document.querySelectorAll("#runs li").forEach(li => {
-    li.classList.toggle("selected", li.dataset.runId === runId);
+  document.querySelectorAll("#runs li.run").forEach(li => {
+    const isSelected = li.dataset.runId === runId;
+    li.classList.toggle("selected", isSelected);
+    if (isSelected) {
+      let el = li.parentElement;
+      while (el && el.id !== "runs") {
+        if (el.tagName === "DETAILS") el.open = true;
+        el = el.parentElement;
+      }
+      li.scrollIntoView({ block: "nearest" });
+    }
   });
   const data = await fetchJSON("/api/run/" + encodeURIComponent(runId));
   const islands = groupByIsland(data.events);
@@ -53,6 +138,8 @@ async function loadRun(runId) {
   renderCurve(islands);
   renderCost(data.events, islands);
   renderKernel(data.events, islands);
+  renderSMC(data.events, islands);
+  renderEvalTime(data.events, islands);
   hideDetail();
 }
 
@@ -255,7 +342,7 @@ function renderIteration(islandId, it, rmin, rmax) {
     svg.appendChild(makeArrow(cx(a), yReweight + radius, cx(i), yResample - radius, markerUrl));
   }
 
-  // mutate rows: one circle per proposal (best-of-K)
+  // mutate rows: one circle per MH proposal
   for (let i = 0; i < N; i++) {
     const props = it.proposals[i] || [];
     let prevY = yResample + radius;
@@ -276,15 +363,32 @@ function renderIteration(islandId, it, rmin, rmax) {
       const kvis = kernelVisual(kinfo);
       c.setAttribute("stroke", kvis.stroke);
       c.setAttribute("stroke-width", kvis.strokeWidth);
+      const hasAlpha = typeof m.accept_prob === "number";
       const status = m.skipped
         ? `SKIPPED (${m.skipped})`
-        : (m.accepted ? "IMPROVED" : "not improved");
-      c.dataset.title =
-        `p${i} · proposal ${k}\n` +
-        `kernel ${kinfo.label}\n` +
-        `parent r=${fmt(m.parent_reward)}\n` +
-        `child  r=${fmt(m.child_reward)}\n` +
-        status;
+        : (m.accepted ? "ACCEPTED" : "REJECTED");
+      const delta = (typeof m.child_reward === "number" && typeof m.parent_reward === "number")
+        ? m.child_reward - m.parent_reward : null;
+      const lines = [
+        `p${i} · proposal ${k}`,
+        `kernel ${kinfo.label}`,
+        `parent r=${fmt(m.parent_reward)}`,
+        `child  r=${fmt(m.child_reward)}`,
+      ];
+      if (delta != null) {
+        lines.push(`Δr     =${(delta >= 0 ? "+" : "") + fmt(delta)}`);
+      }
+      if (typeof m.beta_t === "number" && delta != null) {
+        lines.push(`β_t·Δr =${(beta_t_signed(m.beta_t, delta))}`);
+      }
+      if (hasAlpha) {
+        lines.push(`α(accept) = ${fmtAlpha(m.accept_prob)}`);
+      }
+      if (m.improved && !m.accepted) {
+        lines.push("(improved but rejected — shouldn't happen)");
+      }
+      lines.push(status);
+      c.dataset.title = lines.join("\n");
       c.dataset.island = islandId;
       c.dataset.iteration = it.iter;
       c.dataset.particleIdx = i;
@@ -484,6 +588,17 @@ function colorOf(reward, rmin, rmax) {
 function lerp(a, b, t) { return a + (b - a) * t; }
 function rgb(r, g, b) { return `rgb(${r|0},${g|0},${b|0})`; }
 function fmt(x) { return (typeof x === "number" && isFinite(x)) ? x.toFixed(4) : String(x); }
+function fmtAlpha(a) {
+  if (typeof a !== "number" || !isFinite(a)) return String(a);
+  if (a >= 0.9995) return "1.000";
+  if (a >= 0.001) return a.toFixed(3);
+  if (a > 0) return a.toExponential(2);
+  return "0.000";
+}
+function beta_t_signed(beta_t, delta) {
+  const v = beta_t * delta;
+  return (v >= 0 ? "+" : "") + (Math.abs(v) >= 0.01 ? v.toFixed(3) : v.toExponential(2));
+}
 
 async function fetchJSON(url) {
   const r = await fetch(url);
@@ -1504,4 +1619,601 @@ function downloadAllFlowSVG() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// ----- eval time tab -------------------------------------------------------
+
+function renderEvalTime(events, islands) {
+  const root = document.getElementById("evaltime-chart");
+  root.innerHTML = "";
+
+  // Extract configured timeout from run_config event, if present.
+  let evalTimeout = null;
+  for (const e of events) {
+    if (e.type === "run_config" && typeof e.eval_timeout === "number") {
+      evalTimeout = e.eval_timeout;
+      break;
+    }
+  }
+
+  // Collect per-proposal samples (only those with recorded eval_time).
+  const samples = [];
+  for (const e of events) {
+    if (e.type !== "proposal") continue;
+    if (e.skipped) continue;
+    if (typeof e.eval_time !== "number") continue;
+    samples.push({
+      iter: e.iteration,
+      island: e.island,
+      particle: e.particle_idx,
+      k: e.k_step,
+      t: e.eval_time,
+      timedOut: !!e.eval_timed_out,
+      reward: e.child_reward,
+    });
+  }
+
+  if (samples.length === 0) {
+    root.innerHTML =
+      "<div style='color:#6b7280; font-size:12px; padding:12px;'>"
+      + "No eval_time data in this run — run again after the instrumentation update."
+      + "</div>";
+    return;
+  }
+
+  // ---- Scatter: eval_time per iteration, colored by island ----
+  const iters = samples.map(s => s.iter);
+  const xMin = Math.min(...iters, 0);
+  const xMax = Math.max(...iters, 1);
+  const yMaxData = Math.max(...samples.map(s => s.t));
+  // Y-axis auto-scales to the data only — the configured timeout is shown as
+  // a side annotation, not as a y-axis bound (so a 30s timeout doesn't squash
+  // a chart whose actual eval times are all under 1s).
+  const yMax = yMaxData * 1.08;
+
+  const W = 880, H = 360;
+  const ml = 72, mr = 24, mt = 24, mb = 50;
+  const plotW = W - ml - mr;
+  const plotH = H - mt - mb;
+  const xScale = x => ml + (x - xMin) / (xMax - xMin || 1) * plotW;
+  const yScale = y => mt + (1 - y / yMax) * plotH;
+
+  const section = document.createElement("div");
+  section.className = "cost-section";
+  section.innerHTML = "<h3 class='cost-title'>Evaluation time per proposal (seconds)</h3>";
+  root.appendChild(section);
+
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("width", W);
+  svg.setAttribute("height", H);
+  svg.classList.add("cost-chart-svg");
+
+  // Y grid + ticks
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const val = yMax * i / yTicks;
+    const y = yScale(val);
+    svg.appendChild(makeAxisLine(ml, y, ml + plotW, y, "grid"));
+    svg.appendChild(makeText(ml - 8, y + 3, fmtSecs(val), "tick-label", "end"));
+  }
+
+  // X ticks
+  const xRange = xMax - xMin;
+  const xStep = Math.max(1, Math.ceil(xRange / 15));
+  for (let i = Math.ceil(xMin); i <= Math.floor(xMax); i += xStep) {
+    const x = xScale(i);
+    svg.appendChild(makeText(x, mt + plotH + 16, String(i), "tick-label", "middle"));
+    svg.appendChild(makeAxisLine(x, mt + plotH, x, mt + plotH + 4, "axis"));
+  }
+
+  // Axes
+  svg.appendChild(makeAxisLine(ml, mt + plotH, ml + plotW, mt + plotH, "axis"));
+  svg.appendChild(makeAxisLine(ml, mt, ml, mt + plotH, "axis"));
+
+  // Timeout annotation (top-right of plot area). No reference line — y-axis
+  // is auto-scaled to data only.
+  if (evalTimeout != null) {
+    const tlabel = makeText(ml + plotW - 6, mt + 12,
+      `timeout = ${fmtSecs(evalTimeout)}`, "legend-text", "end");
+    tlabel.setAttribute("fill", "#ef4444");
+    svg.appendChild(tlabel);
+    if (yMaxData > evalTimeout) {
+      const note = makeText(ml + plotW - 6, mt + 28,
+        "(some evals exceeded timeout)", "legend-text", "end");
+      note.setAttribute("fill", "#ef4444");
+      note.setAttribute("font-style", "italic");
+      svg.appendChild(note);
+    }
+  }
+
+  // Per-iteration mean line (across islands)
+  const iterAgg = new Map(); // iter -> { sum, n }
+  for (const s of samples) {
+    if (!iterAgg.has(s.iter)) iterAgg.set(s.iter, { sum: 0, n: 0 });
+    const a = iterAgg.get(s.iter);
+    a.sum += s.t;
+    a.n += 1;
+  }
+  const meanPts = [...iterAgg.entries()]
+    .map(([iter, a]) => ({ iter, mean: a.sum / a.n }))
+    .sort((a, b) => a.iter - b.iter);
+  if (meanPts.length >= 2) {
+    const meanLine = document.createElementNS(SVG_NS, "polyline");
+    meanLine.setAttribute("points",
+      meanPts.map(p => `${xScale(p.iter)},${yScale(p.mean)}`).join(" "));
+    meanLine.setAttribute("stroke", "#1c1f24");
+    meanLine.setAttribute("stroke-width", 1.5);
+    meanLine.setAttribute("fill", "none");
+    meanLine.setAttribute("opacity", 0.55);
+    svg.appendChild(meanLine);
+  }
+
+  // Scatter dots
+  const islandIds = [...new Set(samples.map(s => s.island))].sort((a, b) => a - b);
+  const jitterWidth = Math.min(12, (plotW / (xRange + 1)) * 0.5);
+  for (const s of samples) {
+    // deterministic jitter within iteration column so overlapping dots fan out
+    const seed = (s.particle * 31 + s.k * 7 + s.island * 3) % 11;
+    const jitter = (seed / 10 - 0.5) * jitterWidth;
+    const cx = xScale(s.iter) + jitter;
+    const cy = yScale(s.t);
+    const color = ISLAND_COLORS[s.island % ISLAND_COLORS.length];
+    const c = makeCircle(cx, cy, 3.2, color);
+    c.setAttribute("stroke", s.timedOut ? "#ef4444" : "#fff");
+    c.setAttribute("stroke-width", s.timedOut ? 1.5 : 0.8);
+    c.setAttribute("opacity", 0.85);
+    c.style.cursor = "pointer";
+    c.dataset.title =
+      `island ${s.island}  iter ${s.iter}  p${s.particle}_k${s.k}\n`
+      + `eval_time: ${fmtSecs(s.t)}`
+      + (s.timedOut ? "  (TIMED OUT)" : "")
+      + (typeof s.reward === "number" ? `\nreward: ${s.reward.toFixed(4)}` : "");
+    svg.appendChild(c);
+  }
+
+  // Axis labels
+  svg.appendChild(makeText(ml + plotW / 2, mt + plotH + 38, "iteration", "axis-label", "middle"));
+  const yLab = makeText(16, mt + plotH / 2, "eval time (s)", "axis-label", "middle");
+  yLab.setAttribute("transform", `rotate(-90, 16, ${mt + plotH / 2})`);
+  svg.appendChild(yLab);
+
+  // Island legend
+  let lgX = ml + 10;
+  let lgY = mt + 12;
+  for (const isl of islandIds) {
+    const color = ISLAND_COLORS[isl % ISLAND_COLORS.length];
+    svg.appendChild(makeCircle(lgX + 5, lgY, 4, color));
+    svg.appendChild(makeText(lgX + 14, lgY + 4, `island ${isl}`, "legend-text", "start"));
+    lgY += 16;
+  }
+  if (meanPts.length >= 2) {
+    const ln = makeAxisLine(lgX, lgY, lgX + 12, lgY, "");
+    ln.setAttribute("stroke", "#1c1f24");
+    ln.setAttribute("stroke-width", 1.5);
+    ln.setAttribute("opacity", 0.55);
+    svg.appendChild(ln);
+    svg.appendChild(makeText(lgX + 16, lgY + 4, "mean per iter", "legend-text", "start"));
+  }
+
+  svg.addEventListener("mousemove", e => {
+    if (e.target.dataset && e.target.dataset.title) showTooltip(e, e.target.dataset.title);
+    else hideTooltip();
+  });
+  svg.addEventListener("mouseleave", hideTooltip);
+
+  section.appendChild(wrapSvgWithExport(svg, "eval_time_per_iteration.svg"));
+
+  // ---- Summary table ----
+  const times = samples.map(s => s.t).sort((a, b) => a - b);
+  const pct = (p) => times[Math.min(times.length - 1, Math.floor(p * times.length))];
+  const timedOutCount = samples.filter(s => s.timedOut).length;
+  const totalEval = samples.reduce((s, x) => s + x.t, 0);
+  const summary = document.createElement("div");
+  summary.className = "cost-summary";
+  summary.innerHTML = `
+    <table>
+      <tr><th>Configured timeout</th><td>${evalTimeout != null ? fmtSecs(evalTimeout) : "—"}</td></tr>
+      <tr><th>Proposals evaluated</th><td>${samples.length}</td></tr>
+      <tr><th>Timed-out evaluations</th><td>${timedOutCount}</td></tr>
+      <tr><th>Median eval time</th><td>${fmtSecs(pct(0.5))}</td></tr>
+      <tr><th>p90 eval time</th><td>${fmtSecs(pct(0.9))}</td></tr>
+      <tr><th>Max eval time</th><td>${fmtSecs(times[times.length - 1])}</td></tr>
+      <tr><th>Total eval time</th><td>${fmtSecs(totalEval)}</td></tr>
+    </table>
+  `;
+  root.appendChild(summary);
+}
+
+function fmtSecs(s) {
+  if (!isFinite(s)) return "—";
+  if (s >= 60) return (s / 60).toFixed(1) + "m";
+  if (s >= 10) return s.toFixed(1) + "s";
+  if (s >= 1) return s.toFixed(2) + "s";
+  return (s * 1000).toFixed(0) + "ms";
+}
+
+// ----- SMC tab -------------------------------------------------------------
+
+function renderSMC(events, islands) {
+  const root = document.getElementById("smc-chart");
+  root.innerHTML = "";
+
+  // Pull run-level config for reference lines / thresholds.
+  let cfg = null;
+  for (const e of events) {
+    if (e.type === "run_config") { cfg = e; break; }
+  }
+
+  // Per-island series, keyed off step_summary (one per iter per island).
+  // Falls back to resample events if step_summary missing.
+  const islandSeries = new Map(); // island -> sorted [{iter, lambda, beta_t, delta_beta, ess, n}]
+  for (const e of events) {
+    if (e.type !== "step_summary" && e.type !== "resample") continue;
+    if (!islandSeries.has(e.island)) islandSeries.set(e.island, new Map());
+    const byIter = islandSeries.get(e.island);
+    const cur = byIter.get(e.iteration) || { iter: e.iteration };
+    if (typeof e.lambda === "number") cur.lambda = e.lambda;
+    if (typeof e.beta_t === "number") cur.beta_t = e.beta_t;
+    if (typeof e.delta_beta === "number") cur.delta_beta = e.delta_beta;
+    if (typeof e.ess_at_lambda === "number") cur.ess = e.ess_at_lambda;
+    if (e.type === "resample" && Array.isArray(e.weights)) {
+      cur.maxWeight = Math.max(...e.weights);
+      cur.nParticles = e.weights.length;
+      cur.uniqueAncestors = Array.isArray(e.ancestors)
+        ? new Set(e.ancestors).size : undefined;
+    }
+    byIter.set(e.iteration, cur);
+  }
+  const islandIds = [...islandSeries.keys()].sort((a, b) => a - b);
+  const seriesByIsland = new Map();
+  for (const isl of islandIds) {
+    const arr = [...islandSeries.get(isl).values()].sort((a, b) => a.iter - b.iter);
+    seriesByIsland.set(isl, arr);
+  }
+
+  if (islandIds.length === 0) {
+    root.innerHTML =
+      "<div style='color:#6b7280; font-size:12px; padding:12px;'>"
+      + "No SMC step data in this run.</div>";
+    return;
+  }
+
+  // Per-iteration acceptance/improve rate (across islands).
+  const iterPropAgg = new Map();
+  for (const e of events) {
+    if (e.type !== "proposal") continue;
+    const k = e.iteration;
+    if (!iterPropAgg.has(k)) iterPropAgg.set(k, { iter: k, total: 0, accepted: 0, improved: 0 });
+    const a = iterPropAgg.get(k);
+    a.total++;
+    if (e.accepted) a.accepted++;
+    if (e.improved) a.improved++;
+  }
+  const acceptSeries = [...iterPropAgg.values()]
+    .sort((a, b) => a.iter - b.iter)
+    .map(d => ({
+      iter: d.iter,
+      acceptance: d.total ? d.accepted / d.total : 0,
+      improvement: d.total ? d.improved / d.total : 0,
+    }));
+
+  // Migration markers (vertical reference lines on per-iter charts).
+  const migrationIters = [];
+  for (const e of events) {
+    if (e.type === "migration" && typeof e.epoch === "number") {
+      migrationIters.push(e.epoch);
+    }
+  }
+
+  function colorOf(islandId) {
+    return ISLAND_COLORS[islandId % ISLAND_COLORS.length];
+  }
+
+  function islandLineSeries(field) {
+    return islandIds
+      .map(isl => ({
+        name: `island ${isl}`,
+        color: colorOf(isl),
+        points: seriesByIsland.get(isl)
+          .filter(d => typeof d[field] === "number")
+          .map(d => ({ x: d.iter, y: d[field] })),
+      }))
+      .filter(s => s.points.length > 0);
+  }
+
+  // λ over iterations
+  appendChart(root, {
+    title: "λ (annealing progress)",
+    yLabel: "λ",
+    series: islandLineSeries("lambda"),
+    yMin: 0, yMax: 1.0,
+    refLines: [{ y: 1.0, label: "target λ = 1", color: "#10b981" }],
+    migrationMarkers: migrationIters,
+    filename: "smc_lambda.svg",
+  });
+
+  // β_t over iterations
+  const betaTarget = cfg ? cfg.beta_target : null;
+  appendChart(root, {
+    title: "β_t (inverse temperature)",
+    yLabel: "β_t",
+    series: islandLineSeries("beta_t"),
+    yMin: 0,
+    yMax: betaTarget != null ? betaTarget * 1.05 : undefined,
+    refLines: betaTarget != null
+      ? [{ y: betaTarget, label: `β target = ${betaTarget}`, color: "#10b981" }]
+      : [],
+    migrationMarkers: migrationIters,
+    filename: "smc_beta.svg",
+  });
+
+  // Δβ per iteration (adaptive step)
+  appendChart(root, {
+    title: "Δβ per iteration (adaptive step size)",
+    yLabel: "Δβ",
+    series: islandLineSeries("delta_beta"),
+    yMin: 0,
+    drawDots: true,
+    migrationMarkers: migrationIters,
+    filename: "smc_delta_beta.svg",
+  });
+
+  // ESS at λ
+  const essThreshold = cfg && cfg.kappa != null && cfg.particles_per_island != null
+    ? cfg.kappa * cfg.particles_per_island
+    : null;
+  // Get particle count fallback if config missing
+  let nParticles = cfg ? cfg.particles_per_island : null;
+  if (nParticles == null) {
+    for (const arr of seriesByIsland.values()) {
+      const found = arr.find(d => d.nParticles);
+      if (found) { nParticles = found.nParticles; break; }
+    }
+  }
+  const essRefLines = [];
+  if (essThreshold != null) {
+    essRefLines.push({
+      y: essThreshold,
+      label: `ESS threshold (κN = ${essThreshold.toFixed(2)})`,
+      color: "#ef4444",
+    });
+  }
+  if (nParticles != null) {
+    essRefLines.push({
+      y: nParticles,
+      label: `N = ${nParticles}`,
+      color: "#10b981",
+    });
+  }
+  appendChart(root, {
+    title: "ESS at λ (effective sample size)",
+    yLabel: "ESS",
+    series: islandLineSeries("ess"),
+    yMin: 0,
+    yMax: nParticles != null ? nParticles * 1.05 : undefined,
+    refLines: essRefLines,
+    migrationMarkers: migrationIters,
+    filename: "smc_ess.svg",
+  });
+
+  // Max-weight degeneracy: ideal = 1/N, bad = approaches 1.
+  appendChart(root, {
+    title: "Max particle weight (degeneracy diagnostic — lower is healthier)",
+    yLabel: "max wᵢ",
+    series: islandLineSeries("maxWeight"),
+    yMin: 0, yMax: 1.0,
+    refLines: nParticles != null
+      ? [{ y: 1.0 / nParticles, label: `uniform = 1/N = ${(1 / nParticles).toFixed(3)}`, color: "#10b981" }]
+      : [],
+    migrationMarkers: migrationIters,
+    filename: "smc_max_weight.svg",
+  });
+
+  // Resampling diversity: unique ancestors / N
+  appendChart(root, {
+    title: "Resampling diversity (unique ancestors per iteration)",
+    yLabel: "unique ancestors",
+    series: islandLineSeries("uniqueAncestors"),
+    yMin: 0,
+    yMax: nParticles != null ? nParticles * 1.05 : undefined,
+    refLines: nParticles != null
+      ? [{ y: nParticles, label: `N = ${nParticles}`, color: "#10b981" }]
+      : [],
+    drawDots: true,
+    migrationMarkers: migrationIters,
+    filename: "smc_diversity.svg",
+  });
+
+  // Acceptance / improvement rate per iteration (aggregate across islands)
+  appendChart(root, {
+    title: "Proposal acceptance & improvement rate per iteration",
+    yLabel: "rate",
+    series: [
+      {
+        name: "improved (child > parent)",
+        color: "#3b82f6",
+        points: acceptSeries.map(d => ({ x: d.iter, y: d.improvement })),
+      },
+      {
+        name: "accepted (best-of-K)",
+        color: "#f59e0b",
+        points: acceptSeries.map(d => ({ x: d.iter, y: d.acceptance })),
+      },
+    ],
+    yMin: 0, yMax: 1.0,
+    drawDots: true,
+    migrationMarkers: migrationIters,
+    filename: "smc_acceptance.svg",
+  });
+
+  // Run-config summary table
+  if (cfg) {
+    const summary = document.createElement("div");
+    summary.className = "cost-summary";
+    const rows = [
+      ["n_islands", cfg.n_islands],
+      ["particles_per_island (N)", cfg.particles_per_island],
+      ["n_proposals (K)", cfg.n_proposals],
+      ["κ (ESS fraction)", cfg.kappa],
+      ["β target", cfg.beta_target],
+      ["max iterations", cfg.max_iterations],
+      ["migration interval", cfg.migration_interval],
+      ["migration size", cfg.migration_size],
+      ["eval timeout", cfg.eval_timeout != null ? fmtSecs(cfg.eval_timeout) : "—"],
+    ];
+    summary.innerHTML = "<table>"
+      + rows.filter(([, v]) => v != null)
+        .map(([k, v]) => `<tr><th>${k}</th><td>${v}</td></tr>`).join("")
+      + "</table>";
+    root.appendChild(summary);
+  }
+}
+
+function appendChart(root, opts) {
+  const section = document.createElement("div");
+  section.className = "cost-section";
+  section.innerHTML = `<h3 class='cost-title'>${opts.title}</h3>`;
+  root.appendChild(section);
+
+  const series = opts.series.filter(s => s.points.length > 0);
+  if (series.length === 0) {
+    const note = document.createElement("div");
+    note.style.cssText = "color:#6b7280; font-size:12px; padding:6px;";
+    note.textContent = "(no data)";
+    section.appendChild(note);
+    return;
+  }
+
+  const allX = series.flatMap(s => s.points.map(p => p.x));
+  const allY = series.flatMap(s => s.points.map(p => p.y));
+  const xMin = Math.min(...allX);
+  const xMax = Math.max(...allX);
+  let yMin = opts.yMin != null ? opts.yMin : Math.min(...allY);
+  let yMax = opts.yMax != null ? opts.yMax : Math.max(...allY);
+  if (opts.refLines) {
+    for (const r of opts.refLines) {
+      if (r.y > yMax) yMax = r.y;
+      if (r.y < yMin) yMin = r.y;
+    }
+  }
+  if (yMax === yMin) yMax = yMin + 1;
+
+  const W = 880, H = 260;
+  const ml = 72, mr = 24, mt = 22, mb = 44;
+  const plotW = W - ml - mr;
+  const plotH = H - mt - mb;
+  const xScale = x => ml + (x - xMin) / (xMax - xMin || 1) * plotW;
+  const yScale = y => mt + (1 - (y - yMin) / (yMax - yMin)) * plotH;
+
+  const svg = document.createElementNS(SVG_NS, "svg");
+  svg.setAttribute("width", W);
+  svg.setAttribute("height", H);
+  svg.classList.add("cost-chart-svg");
+
+  // Y grid + ticks
+  const yTicks = 5;
+  for (let i = 0; i <= yTicks; i++) {
+    const val = yMin + (yMax - yMin) * i / yTicks;
+    const y = yScale(val);
+    svg.appendChild(makeAxisLine(ml, y, ml + plotW, y, "grid"));
+    svg.appendChild(makeText(ml - 8, y + 3, fmtNum(val), "tick-label", "end"));
+  }
+
+  // X ticks
+  const xRange = xMax - xMin;
+  const xStep = Math.max(1, Math.ceil(xRange / 12));
+  for (let i = Math.ceil(xMin); i <= Math.floor(xMax); i += xStep) {
+    const x = xScale(i);
+    svg.appendChild(makeText(x, mt + plotH + 16, String(i), "tick-label", "middle"));
+    svg.appendChild(makeAxisLine(x, mt + plotH, x, mt + plotH + 4, "axis"));
+  }
+
+  // Axes
+  svg.appendChild(makeAxisLine(ml, mt + plotH, ml + plotW, mt + plotH, "axis"));
+  svg.appendChild(makeAxisLine(ml, mt, ml, mt + plotH, "axis"));
+
+  // Migration markers (vertical dashed)
+  if (opts.migrationMarkers && opts.migrationMarkers.length) {
+    for (const it of opts.migrationMarkers) {
+      if (it < xMin || it > xMax) continue;
+      const x = xScale(it);
+      const ml_ = makeAxisLine(x, mt, x, mt + plotH, "");
+      ml_.setAttribute("stroke", "#8b5cf6");
+      ml_.setAttribute("stroke-width", 1);
+      ml_.setAttribute("stroke-dasharray", "2,3");
+      ml_.setAttribute("opacity", 0.45);
+      svg.appendChild(ml_);
+    }
+  }
+
+  // Reference horizontal lines
+  if (opts.refLines) {
+    for (const r of opts.refLines) {
+      if (r.y < yMin || r.y > yMax) continue;
+      const y = yScale(r.y);
+      const ln = makeAxisLine(ml, y, ml + plotW, y, "");
+      ln.setAttribute("stroke", r.color);
+      ln.setAttribute("stroke-width", 1.4);
+      ln.setAttribute("stroke-dasharray", "6,4");
+      svg.appendChild(ln);
+      const lab = makeText(ml + plotW - 6, y - 4, r.label, "legend-text", "end");
+      lab.setAttribute("fill", r.color);
+      svg.appendChild(lab);
+    }
+  }
+
+  // Series lines + dots
+  for (const s of series) {
+    if (s.points.length >= 2) {
+      const line = document.createElementNS(SVG_NS, "polyline");
+      line.setAttribute("points", s.points.map(p => `${xScale(p.x)},${yScale(p.y)}`).join(" "));
+      line.setAttribute("stroke", s.color);
+      line.setAttribute("stroke-width", 1.8);
+      line.setAttribute("fill", "none");
+      svg.appendChild(line);
+    }
+    if (opts.drawDots || s.points.length === 1) {
+      for (const p of s.points) {
+        const c = makeCircle(xScale(p.x), yScale(p.y), 2.8, s.color);
+        c.setAttribute("stroke", "#fff");
+        c.setAttribute("stroke-width", 0.8);
+        c.style.cursor = "pointer";
+        c.dataset.title = `${s.name}\niter ${p.x}: ${fmtNum(p.y)}`;
+        svg.appendChild(c);
+      }
+    }
+  }
+
+  // Axis labels
+  svg.appendChild(makeText(ml + plotW / 2, mt + plotH + 36, "iteration", "axis-label", "middle"));
+  const yLab = makeText(16, mt + plotH / 2, opts.yLabel || "", "axis-label", "middle");
+  yLab.setAttribute("transform", `rotate(-90, 16, ${mt + plotH / 2})`);
+  svg.appendChild(yLab);
+
+  // Legend (top-left)
+  let lgX = ml + 10;
+  let lgY = mt + 10;
+  for (const s of series) {
+    svg.appendChild(makeRect(lgX, lgY - 5, 10, 10, s.color));
+    svg.appendChild(makeText(lgX + 14, lgY + 4, s.name, "legend-text", "start"));
+    lgY += 15;
+  }
+
+  svg.addEventListener("mousemove", e => {
+    if (e.target.dataset && e.target.dataset.title) showTooltip(e, e.target.dataset.title);
+    else hideTooltip();
+  });
+  svg.addEventListener("mouseleave", hideTooltip);
+
+  section.appendChild(wrapSvgWithExport(svg, opts.filename || "chart.svg"));
+}
+
+function fmtNum(v) {
+  if (!isFinite(v)) return "—";
+  if (Math.abs(v) >= 100) return v.toFixed(0);
+  if (Math.abs(v) >= 10) return v.toFixed(1);
+  if (Math.abs(v) >= 1) return v.toFixed(2);
+  if (Math.abs(v) >= 0.01) return v.toFixed(3);
+  if (v === 0) return "0";
+  return v.toExponential(1);
 }

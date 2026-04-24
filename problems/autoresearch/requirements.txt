@@ -1,0 +1,11 @@
+# Extra Python packages used by problems/autoresearch (beyond the
+# base SMCEvolve venv). Install with:
+#
+#   uv pip install -r problems/autoresearch/requirements.txt
+#
+# torch is already pinned by the main SMCEvolve pyproject.toml; we
+# don't pin it here to avoid version conflicts.
+pyarrow>=15.0
+requests>=2.32
+rustbpe>=0.1
+tiktoken>=0.7

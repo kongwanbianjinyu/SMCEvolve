@@ -1,0 +1,6 @@
+name: math_kissing_number
+dir: problems/math/kissing_number
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 60.0

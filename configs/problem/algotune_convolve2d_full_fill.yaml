@@ -1,0 +1,6 @@
+name: algotune_convolve2d_full_fill
+dir: problems/algotune/convolve2d_full_fill
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

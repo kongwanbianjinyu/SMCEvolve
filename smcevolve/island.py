@@ -3,11 +3,11 @@
 Each step:
   1. Adaptive temperature: solve ESS(λ) = κN by bisection (Sec 2.3).
   2. Softmax resampling at Δβ = (λ_t − λ_{t-1}) β (Eq. 12).
-  3. Best-of-K mutation: for each resampled particle, generate up to
-     `n_proposals` LLM proposals, evaluate all, and keep the one with
-     the highest reward (parent is always a fallback, so reward never
-     decreases). This replaces the original MH accept/reject mechanism
-     to avoid wasting LLM calls on rejected proposals.
+  3. Metropolis-Hastings mutation: for each resampled particle, run up to
+     `n_proposals` LLM proposals. Each proposal is generated from the
+     current best-so-far state of the chain and accepted with probability
+     α_t(x, x') = min{1, exp(β_t · (R(x') − R(x)))}. If accepted, the
+     chain advances; otherwise the best-so-far is kept.
 
 If an `event_logger` is supplied, every proposal and every step
 summary is appended to it as a JSON record.
@@ -156,7 +156,7 @@ class SMCIsland:
 
         mutated = await asyncio.gather(
             *[
-                self._best_of_k(p, beta_t=beta_t, particle_idx=i)
+                self._mutate_mh(p, beta_t=beta_t, particle_idx=i)
                 for i, p in enumerate(resampled)
             ]
         )
@@ -224,26 +224,26 @@ class SMCIsland:
                 j += 1
         return indices
 
-    async def _best_of_k(self, particle: Particle, beta_t: float, particle_idx: int) -> Particle:
-        best = particle  # parent is always a candidate
-        current = particle  # chain tip: proposals build on the latest
+    async def _mutate_mh(self, particle: Particle, beta_t: float, particle_idx: int) -> Particle:
+        """MH mutation: propose from best-so-far, accept with α = min(1, e^{β_t Δr})."""
+        best = particle  # current state of the chain (also the proposal source)
         for k_step in range(self.n_proposals):
             island_snapshot = [
                 (p.id, p.program, p.reward) for p in self.particles
             ]
             proposal = await self.proposer.propose(
-                current.program,
+                best.program,
                 self.task,
                 {
-                    "parent_reward": current.reward,
-                    "parent_id": current.id,
+                    "parent_reward": best.reward,
+                    "parent_id": best.id,
                     "island_particles": island_snapshot,
                     "archive": self.archive_snapshot(),
                 },
             )
             new_program = proposal.program
             kernel_used = proposal.metadata.get("kernel")
-            if new_program == current.program:
+            if new_program == best.program:
                 self._log_event(
                     type="proposal",
                     island=self.id,
@@ -251,9 +251,10 @@ class SMCIsland:
                     particle_idx=particle_idx,
                     k_step=k_step,
                     beta_t=beta_t,
-                    parent_id=current.id,
-                    parent_reward=current.reward,
-                    child_reward=current.reward,
+                    parent_id=best.id,
+                    parent_reward=best.reward,
+                    child_reward=best.reward,
+                    accept_prob=0.0,
                     accepted=False,
                     skipped="proposal_unchanged",
                     prompt=proposal.prompt,
@@ -265,15 +266,23 @@ class SMCIsland:
                     self.proposer.update_kernel(kernel_used, False)
                 continue
 
-            new_reward = await self.evaluator.evaluate(new_program)
+            eval_result = await self.evaluator.evaluate_timed(new_program)
+            new_reward = eval_result.reward
             self._archive_add(new_program, new_reward)
+
+            delta = new_reward - best.reward
+            improved = delta > 0
+            if delta >= 0:
+                accept_prob = 1.0
+            else:
+                accept_prob = math.exp(beta_t * delta)
+            accepted = self.rng.random() < accept_prob
+
             child = Particle(
                 program=new_program,
                 reward=new_reward,
-                parent_id=current.id,
+                parent_id=best.id,
             )
-            improved = new_reward > current.reward
-            is_new_best = new_reward > best.reward
 
             self._log_event(
                 type="proposal",
@@ -282,11 +291,14 @@ class SMCIsland:
                 particle_idx=particle_idx,
                 k_step=k_step,
                 beta_t=beta_t,
-                parent_id=current.id,
-                parent_reward=current.reward,
+                parent_id=best.id,
+                parent_reward=best.reward,
                 child_reward=new_reward,
+                accept_prob=accept_prob,
+                accepted=accepted,
                 improved=improved,
-                accepted=is_new_best,
+                eval_time=eval_result.elapsed,
+                eval_timed_out=eval_result.timed_out,
                 prompt=proposal.prompt,
                 response=proposal.response,
                 program=new_program,
@@ -296,8 +308,7 @@ class SMCIsland:
             if kernel_used:
                 self.proposer.update_kernel(kernel_used, improved)
 
-            current = child  # chain always advances
-            if is_new_best:
+            if accepted:
                 best = child
         return best
 

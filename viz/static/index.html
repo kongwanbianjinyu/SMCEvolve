@@ -17,7 +17,7 @@
         <ol>
           <li><b>reweight</b> &mdash; parents (size&nbsp;∝&nbsp;weight)</li>
           <li><b>resample</b> &mdash; arrows show ancestor</li>
-          <li><b>mutate</b> &mdash; best-of-K proposals</li>
+          <li><b>mutate</b> &mdash; MH proposals (α = min{1, e<sup>β<sub>t</sub>·Δr</sup>})</li>
         </ol>
         <div class="cmap">
           <span>low</span>
@@ -40,6 +40,8 @@
         <button class="tab" data-tab="curve">Score curve</button>
         <button class="tab" data-tab="cost">Token &amp; Cost</button>
         <button class="tab" data-tab="kernel">Kernel</button>
+        <button class="tab" data-tab="smc">SMC</button>
+        <button class="tab" data-tab="evaltime">Eval time</button>
       </nav>
       <div id="view-flow" class="view">
         <div id="islands"></div>
@@ -52,6 +54,12 @@
       </div>
       <div id="view-kernel" class="view hidden">
         <div id="kernel-chart"></div>
+      </div>
+      <div id="view-smc" class="view hidden">
+        <div id="smc-chart"></div>
+      </div>
+      <div id="view-evaltime" class="view hidden">
+        <div id="evaltime-chart"></div>
       </div>
     </main>
     <section id="detail" class="hidden">

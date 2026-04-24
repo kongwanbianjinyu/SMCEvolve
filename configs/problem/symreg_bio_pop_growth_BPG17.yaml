@@ -1,0 +1,6 @@
+name: symreg_bio_pop_growth_BPG17
+dir: problems/symbolic_regression/generated/bio_pop_growth/BPG17
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

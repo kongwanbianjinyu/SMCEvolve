@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import random
 from pathlib import Path
 
@@ -124,6 +125,23 @@ def _resolve(path_str: str) -> Path:
     return p if p.is_absolute() else Path(get_original_cwd()) / p
 
 
+def _parse_gpu_pool(spec: str) -> list[int]:
+    """Parse `EVAL_GPU_IDS` (e.g. "0,1,2,3") into a deduped list of ints."""
+    out: list[int] = []
+    for tok in spec.split(","):
+        tok = tok.strip()
+        if not tok:
+            continue
+        try:
+            v = int(tok)
+        except ValueError:
+            log.warning("EVAL_GPU_IDS: ignoring non-integer token %r", tok)
+            continue
+        if v not in out:
+            out.append(v)
+    return out
+
+
 @hydra.main(version_base=None, config_path="../configs", config_name="config")
 def main(cfg: DictConfig) -> None:
     load_dotenv(_resolve(".env"))
@@ -148,6 +166,29 @@ async def _run(cfg: DictConfig) -> None:
         cfg, prompt_manager=prompt_manager, rng=random.Random(cfg.seed + 999_999)
     )
     eval_timeout = float(cfg.problem.get("timeout", 30.0))
+    gpu_pool = _parse_gpu_pool(os.environ.get("EVAL_GPU_IDS", ""))
+    if gpu_pool:
+        log.info(
+            "Evaluator GPU pool: %s (max %d concurrent evaluations)",
+            gpu_pool, len(gpu_pool),
+        )
+    event_logger.log({
+        "type": "run_config",
+        "eval_timeout": eval_timeout,
+        "n_islands": int(cfg.algo.n_islands),
+        "particles_per_island": int(cfg.algo.particles_per_island),
+        "n_proposals": int(cfg.algo.n_proposals),
+        "kappa": float(cfg.algo.kappa),
+        "beta_target": float(cfg.algo.beta),
+        "max_iterations": int(cfg.algo.max_iterations),
+        "migration_interval": int(cfg.algo.migration_interval),
+        "migration_size": int(cfg.algo.migration_size),
+        "gpu_pool": gpu_pool,
+    })
+
+    # One Evaluator shared across islands so the GPU pool is global, not
+    # fragmented per-island.
+    evaluator = Evaluator(evaluator_path, timeout=eval_timeout, gpu_pool=gpu_pool)
 
     islands: list[SMCIsland] = []
     for k in range(cfg.algo.n_islands):
@@ -160,7 +201,7 @@ async def _run(cfg: DictConfig) -> None:
                 n_proposals=cfg.algo.n_proposals,
                 min_iterations=cfg.algo.min_iterations,
                 proposer=proposer,
-                evaluator=Evaluator(evaluator_path, timeout=eval_timeout),
+                evaluator=evaluator,
                 task_description=task_description,
                 rng=random.Random(cfg.seed + k),
                 event_logger=event_logger,

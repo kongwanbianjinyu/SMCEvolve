@@ -1,0 +1,6 @@
+name: algotune_eigenvectors_complex
+dir: problems/algotune/eigenvectors_complex
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

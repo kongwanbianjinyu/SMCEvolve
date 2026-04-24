@@ -1,0 +1,6 @@
+name: symreg_phys_osc_PO13
+dir: problems/symbolic_regression/generated/phys_osc/PO13
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0

@@ -1,0 +1,6 @@
+name: algotune_psd_cone_projection
+dir: problems/algotune/psd_cone_projection
+initial_program: initial_program.py
+evaluator: evaluator.py
+task_file: task.md
+timeout: 30.0
