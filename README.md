@@ -1,6 +1,4 @@
-# 🧬 SMCEvolve
-
-> **Sequential Monte Carlo for LLM-Driven Program Evolution**
+# 🧬 SMCEvolve: Sequential Monte Carlo for LLM-Driven Program Evolution
 
 <p align="center">
   <img src="figs/SMCEvolve_teaser.png" alt="SMCEvolve teaser" width="90%"/>
