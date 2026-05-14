@@ -367,7 +367,7 @@ Output: selected (Top-K + the M new diverse programs)
 The `Embedder` (`embedder.py`) provides vector representations of program
 code:
 
-- **Model**: defaults to Titan Text Embeddings V2 (via the LiteLLM proxy).
+- **Model**: defaults to OpenAI `text-embedding-3-small`.
 - **Cache**: in-memory cache keyed by SHA-256 hash to avoid repeated API
   calls.
 - **Normalization**: returns L2-normalized vectors so downstream code can

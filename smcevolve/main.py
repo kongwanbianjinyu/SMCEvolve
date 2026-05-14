@@ -52,7 +52,7 @@ def _build_prompt_manager(
 
         # Build embedder for diversity selection
         if diverse > 0:
-            emb_model = str(prompt_cfg.get("embedding_model", "Titan Text Embeddings V2"))
+            emb_model = str(prompt_cfg.get("embedding_model", "text-embedding-3-small"))
             emb_base = prompt_cfg.get("embedding_base_url")
             if emb_base is not None:
                 emb_base = str(emb_base)

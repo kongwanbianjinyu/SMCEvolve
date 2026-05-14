@@ -4,8 +4,6 @@
   <img src="figs/SMCEvolve_teaser.png" alt="SMCEvolve teaser" width="90%"/>
 </p>
 
-## ✨ Abstract
-
 LLM-driven program evolution has emerged as a powerful tool for automated
 scientific discovery, yet existing frameworks offer no principled guide for
 designing their individual components and provide no guarantee that the search
@@ -86,7 +84,7 @@ cp .env.example .env
 
 ```
 OPENAI_API_KEY=sk-...
-API_BASE_URL=https://litellm.cloud.osu.edu # or https://api.openai.com/v1 or any OpenAI-compatible endpoint
+API_BASE_URL=https://openrouter.ai/api/v1 # or https://api.openai.com/v1 or any OpenAI-compatible endpoint
 ```
 
 Any OpenAI-compatible endpoint works (OpenAI, Azure, LiteLLM, local vLLM,
@@ -103,7 +101,18 @@ python -m smcevolve.main problem=circle_packing algo=medium
 Override any Hydra config from the CLI. Examples:
 
 ```bash
-python -m smcevolve.main problem=circle_packing algo=medium
+
+# Bigger search: more islands × particles × proposals
+python -m smcevolve.main problem=circle_packing \
+    algo.n_islands=4 algo.particles_per_island=16 algo.n_proposals=4
+
+# Cap LLM calls / tighten convergence (β = target inverse temperature, κ = ESS threshold)
+python -m smcevolve.main problem=circle_packing \
+    algo.max_iterations=20 algo.beta=30 algo.kappa=0.99
+
+# Force a single kernel (skip Thompson Sampling)
+python -m smcevolve.main problem=circle_packing \
+    +algo.prompt.force_kernel=diff_with_inspo
 ```
 
 Available presets:

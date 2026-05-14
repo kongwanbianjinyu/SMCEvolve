@@ -59,7 +59,7 @@ LiteLLM / vLLM / Ollama / …):
 
 ```
 OPENAI_API_KEY=sk-...
-API_BASE_URL=https://litellm.cloud.osu.edu
+API_BASE_URL=https://openrouter.ai/api/v1
 ```
 
 `.env` is gitignored and will not be committed.

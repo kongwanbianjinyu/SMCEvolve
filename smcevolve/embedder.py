@@ -22,7 +22,7 @@ class Embedder:
 
     def __init__(
         self,
-        model: str = "Titan Text Embeddings V2",
+        model: str = "text-embedding-3-small",
         api_key: str | None = None,
         base_url: str | None = None,
     ):

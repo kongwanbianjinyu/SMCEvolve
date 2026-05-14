@@ -31,5 +31,5 @@ prompt:
   #force_kernel: diff_with_inspo   # uncomment to pin a single kernel
 
   # Embedding model for diversity selection (only used when diverse_inspirations > 0)
-  embedding_model: "Titan Text Embeddings V2"
-  embedding_base_url: "https://litellm.cloud.osu.edu"
+  embedding_model: "text-embedding-3-small"
+  embedding_base_url: "https://api.openai.com/v1"
