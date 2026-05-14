@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # run_exp.sh — SMCEvolve experiment dispatcher.
-# See run_exp.md for the design rationale and recipes.
+# See run_exp.md (alongside this script) for the design rationale and recipes.
 set -euo pipefail
-cd "$(dirname "$0")"
+# This script lives in experiments/ but operates on the repo root
+# (configs/, outputs/, problems/ all live there).
+cd "$(dirname "$0")/.."
 
 # -------- config (env-overrideable) --------
 : "${ALGO:=small}"

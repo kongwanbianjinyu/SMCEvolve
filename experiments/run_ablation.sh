@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # SMCEvolve Ablation Study — Circle Packing (9 runs)
-# Usage:
-#   ./run_ablation.sh A1          # single experiment
-#   ./run_ablation.sh groupA      # one group
-#   ./run_ablation.sh all         # all 9 runs
-#   SEED=123 ./run_ablation.sh A1 # custom seed
+# Usage (from repo root):
+#   ./experiments/run_ablation.sh A1          # single experiment
+#   ./experiments/run_ablation.sh groupA      # one group
+#   ./experiments/run_ablation.sh all         # all 9 runs
+#   SEED=123 ./experiments/run_ablation.sh A1 # custom seed
 set -euo pipefail
-cd "$(dirname "$0")"
+# This script lives in experiments/ but operates on the repo root
+# (outputs/ writes happen there).
+cd "$(dirname "$0")/.."
 
 SEED="${SEED:-42}"
 
@@ -31,7 +33,7 @@ run_baseline() {
     algo.n_islands=2 algo.particles_per_island=8 algo.n_proposals=2
 }
 
-# ── Group A: β, κ → 迭代次数 ─────────────────────────────────────────────────
+# ── Group A: β, κ → iteration count ──────────────────────────────────────────
 run_A1() { run_exp A1 $COMMON algo.beta=5  algo.kappa=0.9 algo.n_islands=2 algo.particles_per_island=8 algo.n_proposals=2; }
 run_A2() { run_exp A2 $COMMON algo.beta=40 algo.kappa=0.9 algo.n_islands=2 algo.particles_per_island=8 algo.n_proposals=2; }
 run_A3() { run_exp A3 $COMMON algo.beta=20 algo.kappa=0.5 algo.n_islands=2 algo.particles_per_island=8 algo.n_proposals=2; }

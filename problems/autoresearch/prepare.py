@@ -178,7 +178,7 @@ def train_tokenizer():
     torch.save(token_bytes_tensor, token_bytes_path)
     print(f"Tokenizer: saved token_bytes to {token_bytes_path}")
 
-    test = "Hello world! Numbers: 123. Unicode: 你好"
+    test = "Hello world! Numbers: 123. Unicode: café résumé"
     encoded = enc.encode_ordinary(test)
     decoded = enc.decode(encoded)
     assert decoded == test, f"Tokenizer roundtrip failed: {test!r} -> {decoded!r}"
