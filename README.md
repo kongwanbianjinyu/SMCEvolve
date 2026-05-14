@@ -1,4 +1,4 @@
-# 🧬 SMCEvolve: Sequential Monte Carlo for LLM-Driven Program Evolution
+<h1 align="center">🧬 SMCEvolve: Principled Scientific Discovery via Sequential Monte Carlo Evolution</h1>
 
 <p align="center">
   <img src="figs/SMCEvolve_teaser.png" alt="SMCEvolve teaser" width="90%"/>
