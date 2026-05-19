@@ -1,10 +1,7 @@
 <h1 align="center">🧬 SMCEvolve: Principled Scientific Discovery via Sequential Monte Carlo Evolution</h1>
 
 <p align="center">
-  <b>Jiachen Jiang<sup>*</sup>, Huminhao Zhu<sup>*</sup>, Zhihui Zhu<sup>†</sup></b><br/>
-  Department of Computer Science and Engineering, The Ohio State University<br/>
-  <code>{jiang.2880, zhu.4228, zhu.3440}@osu.edu</code><br/>
-  <sub><sup>*</sup>Equal contribution &nbsp;·&nbsp; <sup>†</sup>Corresponding author</sub>
+  <b><a href="https://kongwanbianjinyu.github.io/">Jiachen Jiang</a>, <a href="https://scholar.google.com/citations?user=_A95xeEAAAAJ&hl=en">Huminhao Zhu</a>, <a href="https://zhihuizhu.github.io/index.html">Zhihui Zhu</a></b>
 </p>
 
 <p align="center">
